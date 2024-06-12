@@ -13,25 +13,81 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
       - name: Set up JDK 17
         uses: actions/setup-java@v2
         with:
           distribution: 'temurin' # You can specify a specific distribution, 'temurin' is commonly used
           java-version: 17
+
       - name: Cache SonarQube packages
         uses: actions/cache@v2
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
+
       - name: Cache Maven packages
         uses: actions/cache@v2
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
+
+      - name: Configure Maven settings
+        run: |
+          mkdir -p ~/.m2
+          echo '<settings>
+                  <mirrors>
+                    <mirror>
+                      <id>central</id>
+                      <mirrorOf>*</mirrorOf>
+                      <url>https://repo1.maven.org/maven2</url>
+                    </mirror>
+                  </mirrors>
+                  <profiles>
+                    <profile>
+                      <id>odl-snapshots</id>
+                      <repositories>
+                        <repository>
+                          <id>odl-snapshots</id>
+                          <url>https://nexus.opendaylight.org/content/repositories/opendaylight.snapshot/</url>
+                          <releases>
+                            <enabled>false</enabled>
+                          </releases>
+                          <snapshots>
+                            <enabled>true</enabled>
+                          </snapshots>
+                        </repository>
+                      </repositories>
+                      <pluginRepositories>
+                        <pluginRepository>
+                          <id>odl-snapshots</id>
+                          <url>https://nexus.opendaylight.org/content/repositories/opendaylight.snapshot/</url>
+                          <releases>
+                            <enabled>false</enabled>
+                          </releases>
+                          <snapshots>
+                            <enabled>true</enabled>
+                          </snapshots>
+                        </pluginRepository>
+                      </pluginRepositories>
+                    </profile>
+                  </profiles>
+                  <activeProfiles>
+                    <activeProfile>odl-snapshots</activeProfile>
+                  </activeProfiles>
+                </settings>' > ~/.m2/settings.xml
+
+      - name: Clean local repository cache
+        run: |
+          rm -rf ~/.m2/repository/org/opendaylight/yangtools/util
+          rm -rf ~/.m2/repository/org/opendaylight/yangtools/concepts
+
       - name: Build and analyze
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=yangtools
+        run: |
+          mvn clean install -U -X
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=netconf
